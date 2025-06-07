@@ -2,143 +2,198 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 
 function CharacterTable() {
-  const [allCharacters, setAllCharacters] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const [totalPages, setTotalPages] = useState(1);
+  const [characters, setCharacters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [name, setName] = useState("");
   const [status, setStatus] = useState("");
+  const [species, setSpecies] = useState("");
+  const [type, setType] = useState("");
   const [gender, setGender] = useState("");
-  const [sortOrder, setSortOrder] = useState("name-az");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const [selectedCharacter, setSelectedCharacter] = useState(null);
-  const [episodeNames, setEpisodeNames] = useState([]);
+  const [responseTime, setResponseTime] = useState(null);
 
-  // API'den tüm karakterleri çek
-  const fetchAllCharacters = async () => {
-    try {
+  useEffect(() => {
+    const fetchCharacters = async () => {
       setLoading(true);
-      const firstPage = await axios.get(
-        "https://rickandmortyapi.com/api/character"
-      );
-      const total = firstPage.data.info.count;
-      const pages = firstPage.data.info.pages;
-
-      let allResults = [...firstPage.data.results];
-      const requests = [];
-      for (let i = 2; i <= pages; i++) {
-        requests.push(
-          axios.get(`https://rickandmortyapi.com/api/character?page=${i}`)
-        );
-      }
-
-      const responses = await Promise.all(requests);
-      responses.forEach((res) => {
-        allResults = [...allResults, ...res.data.results];
-      });
-
-      setAllCharacters(allResults);
-      setTotalPages(Math.ceil(allResults.length / pageSize));
       setError(null);
-    } catch (err) {
-      setAllCharacters([]);
-      setError("Veriler alınamadı.");
-    } finally {
-      setLoading(false);
+
+      try {
+        const params = {
+          page: currentPage,
+          name: name || undefined,
+          status: status || undefined,
+          species: species || undefined,
+          type: type || undefined,
+          gender: gender || undefined,
+        };
+
+        const startTime = performance.now();
+        const response = await axios.get(
+          "https://rickandmortyapi.com/api/character",
+          { params }
+        );
+        const endTime = performance.now();
+
+        setResponseTime((endTime - startTime).toFixed(2));
+        setCharacters(response.data.results);
+        setTotalPages(response.data.info.pages);
+      } catch (err) {
+        setCharacters([]);
+        setTotalPages(1);
+        setError("Veriler alınamadı.");
+        setResponseTime(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCharacters();
+  }, [currentPage, name, status, species, type, gender]);
+
+  const handlePageChange = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
     }
   };
 
-  useEffect(() => {
-    fetchAllCharacters();
-  }, []);
+  const renderPagination = () => {
+    const pages = [];
+    const visiblePages = 5;
 
-  // Filtreleme + Sıralama
-  const filteredData = allCharacters
-    .filter(
-      (char) =>
-        char.name.toLowerCase().includes(name.toLowerCase()) &&
-        (status === "" || char.status.toLowerCase() === status.toLowerCase()) &&
-        (gender === "" || char.gender.toLowerCase() === gender.toLowerCase())
-    )
-    .sort((a, b) => {
-      switch (sortOrder) {
-        case "name-az":
-          return a.name.localeCompare(b.name);
-        case "name-za":
-          return b.name.localeCompare(a.name);
-        case "id-asc":
-          return a.id - b.id;
-        case "id-desc":
-          return b.id - a.id;
-        default:
-          return 0;
-      }
-    });
+    let startPage = Math.max(currentPage - Math.floor(visiblePages / 2), 2);
+    let endPage = startPage + visiblePages - 1;
 
-  const paginatedCharacters = filteredData.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize
-  );
-
-  useEffect(() => {
-    setTotalPages(Math.ceil(filteredData.length / pageSize));
-  }, [filteredData.length, pageSize]);
-
-  const handleSelect = async (char) => {
-    setSelectedCharacter(char);
-    try {
-      const episodes = char.episode.slice(0, 5);
-      const requests = await Promise.all(episodes.map((url) => axios.get(url)));
-      const names = requests.map((res) => res.data.name);
-      setEpisodeNames(names);
-    } catch (err) {
-      setEpisodeNames(["Bölümler alınamadı."]);
+    if (endPage >= totalPages) {
+      endPage = totalPages - 1;
+      startPage = Math.max(endPage - visiblePages + 1, 2);
     }
+
+    // İlk sayfa
+    pages.push(
+      <button
+        key={1}
+        onClick={() => handlePageChange(1)}
+        className={`px-3 py-1 border rounded ${
+          currentPage === 1 ? "bg-blue-500 text-white" : "bg-white"
+        }`}
+      >
+        1
+      </button>
+    );
+
+    // Başta ... gerekiyorsa
+    if (startPage > 2) {
+      pages.push(
+        <span key="start-ellipsis" className="px-2 select-none">
+          ...
+        </span>
+      );
+    }
+
+    // Ortadaki sayfalar
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(
+        <button
+          key={i}
+          onClick={() => handlePageChange(i)}
+          className={`px-3 py-1 border rounded ${
+            currentPage === i ? "bg-blue-500 text-white" : "bg-white"
+          }`}
+        >
+          {i}
+        </button>
+      );
+    }
+
+    // Sonda ... gerekiyorsa
+    if (endPage < totalPages - 1) {
+      pages.push(
+        <span key="end-ellipsis" className="px-2 select-none">
+          ...
+        </span>
+      );
+    }
+
+    // Son sayfa
+    if (totalPages > 1) {
+      pages.push(
+        <button
+          key={totalPages}
+          onClick={() => handlePageChange(totalPages)}
+          className={`px-3 py-1 border rounded ${
+            currentPage === totalPages ? "bg-blue-500 text-white" : "bg-white"
+          }`}
+        >
+          {totalPages}
+        </button>
+      );
+    }
+
+    return pages;
   };
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6 text-center">
-        Rick and Morty Karakterleri
-      </h2>
+      <h1 className="text-2xl font-bold text-center mb-6">
+        Rick and Morty Karakter Tablosu
+      </h1>
 
-      {/* Filtreler */}
+      {/* 🔍 Filtre Alanları */}
       <div className="flex flex-wrap gap-4 justify-center mb-4">
         <input
           type="text"
           placeholder="İsme göre ara..."
+          className="border px-3 py-2 rounded w-60"
           value={name}
           onChange={(e) => {
-            setCurrentPage(1);
             setName(e.target.value);
+            setCurrentPage(1);
           }}
-          className="border px-3 py-2 rounded w-60"
         />
-
+        <input
+          type="text"
+          placeholder="Tür (species)..."
+          className="border px-3 py-2 rounded w-60"
+          value={species}
+          onChange={(e) => {
+            setSpecies(e.target.value);
+            setCurrentPage(1);
+          }}
+        />
+        <input
+          type="text"
+          placeholder="Tip (type)..."
+          className="border px-3 py-2 rounded w-60"
+          value={type}
+          onChange={(e) => {
+            setType(e.target.value);
+            setCurrentPage(1);
+          }}
+        />
         <select
+          className="border px-3 py-2 rounded w-40"
           value={status}
           onChange={(e) => {
-            setCurrentPage(1);
             setStatus(e.target.value);
+            setCurrentPage(1);
           }}
-          className="border px-3 py-2 rounded w-40"
         >
           <option value="">Tüm Durumlar</option>
           <option value="alive">Alive</option>
           <option value="dead">Dead</option>
           <option value="unknown">Unknown</option>
         </select>
-
         <select
+          className="border px-3 py-2 rounded w-40"
           value={gender}
           onChange={(e) => {
-            setCurrentPage(1);
             setGender(e.target.value);
+            setCurrentPage(1);
           }}
-          className="border px-3 py-2 rounded w-40"
         >
           <option value="">Tüm Cinsiyetler</option>
           <option value="male">Male</option>
@@ -146,127 +201,81 @@ function CharacterTable() {
           <option value="genderless">Genderless</option>
           <option value="unknown">Unknown</option>
         </select>
-
-        <select
-          value={sortOrder}
-          onChange={(e) => setSortOrder(e.target.value)}
-          className="border px-3 py-2 rounded w-40"
-        >
-          <option value="name-az">İsim A-Z</option>
-          <option value="name-za">İsim Z-A</option>
-          <option value="id-asc">ID Artan</option>
-          <option value="id-desc">ID Azalan</option>
-        </select>
-
-        <select
-          value={pageSize}
-          onChange={(e) => {
-            const newSize = parseInt(e.target.value);
-            setPageSize(newSize);
-            setCurrentPage(1);
-            setTotalPages(Math.ceil(filteredData.length / newSize));
-          }}
-          className="border px-3 py-2 rounded w-40"
-        >
-          <option value="10">10 karakter</option>
-          <option value="20">20 karakter</option>
-          <option value="30">30 karakter</option>
-          <option value="50">50 karakter</option>
-        </select>
       </div>
 
-      {/* Hata */}
-      {error && <p className="text-center text-red-500 mt-4">{error}</p>}
+      {responseTime && (
+        <p className="text-center mb-4 text-gray-600">
+          Son API çağrısı süresi: {responseTime} ms
+        </p>
+      )}
 
       {/* Tablo */}
-      {!loading && paginatedCharacters.length > 0 && (
-        <div className="overflow-auto">
-          <table className="min-w-full border border-gray-300 text-sm">
-            <thead>
-              <tr className="bg-gray-100 text-left">
-                <th className="border p-2">ID</th>
-                <th className="border p-2">İsim</th>
-                <th className="border p-2">Durum</th>
-                <th className="border p-2">Tür</th>
-                <th className="border p-2">Tip</th>
-                <th className="border p-2">Cinsiyet</th>
-                <th className="border p-2">Origin</th>
-                <th className="border p-2">Location</th>
-                <th className="border p-2">Bölüm</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedCharacters.map((char) => (
-                <tr
-                  key={char.id}
-                  onClick={() => handleSelect(char)}
-                  className="hover:bg-gray-100 cursor-pointer"
-                >
-                  <td className="border p-2">{char.id}</td>
-                  <td className="border p-2">{char.name}</td>
-                  <td className="border p-2">{char.status}</td>
-                  <td className="border p-2">{char.species}</td>
-                  <td className="border p-2">{char.type || "—"}</td>
-                  <td className="border p-2">{char.gender}</td>
-                  <td className="border p-2">{char.origin.name}</td>
-                  <td className="border p-2">{char.location.name}</td>
-                  <td className="border p-2">{char.episode.length}</td>
+      {loading ? (
+        <p className="text-center">Yükleniyor...</p>
+      ) : error ? (
+        <p className="text-center text-red-500">{error}</p>
+      ) : (
+        <>
+          <div className="overflow-auto">
+            <table className="min-w-full border border-gray-300 text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border p-2">ID</th>
+                  <th className="border p-2">Görsel</th>
+                  <th className="border p-2">İsim</th>
+                  <th className="border p-2">Durum</th>
+                  <th className="border p-2">Tür</th>
+                  <th className="border p-2">Tip</th>
+                  <th className="border p-2">Cinsiyet</th>
+                  <th className="border p-2">Origin</th>
+                  <th className="border p-2">Location</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {loading && <p className="text-center mt-6">Yükleniyor...</p>}
-
-      {/* Sayfalama */}
-      {!loading && filteredData.length > 0 && (
-        <div className="flex justify-center gap-2 mt-6 flex-wrap">
-          {Array.from({ length: totalPages }, (_, i) => (
-            <button
-              key={i + 1}
-              onClick={() => setCurrentPage(i + 1)}
-              className={`px-3 py-1 border rounded ${
-                currentPage === i + 1
-                  ? "bg-blue-500 text-white"
-                  : "bg-white text-gray-800"
-              }`}
-            >
-              {i + 1}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Detay */}
-      {selectedCharacter && (
-        <div className="mt-6 border rounded p-4 bg-white shadow-md max-w-3xl mx-auto">
-          <h3 className="text-xl font-semibold mb-2">Karakter Detayları</h3>
-          <div className="flex gap-4 items-center flex-wrap">
-            <img
-              src={selectedCharacter.image}
-              alt={selectedCharacter.name}
-              className="w-24 h-24 rounded"
-            />
-            <div>
-              <p>
-                <strong>İsim:</strong> {selectedCharacter.name}
-              </p>
-              <p>
-                <strong>Lokasyon:</strong> {selectedCharacter.location.name}
-              </p>
-              <p>
-                <strong>İlk Bölümler:</strong>
-              </p>
-              <ul className="list-disc list-inside text-sm text-gray-600">
-                {episodeNames.map((ep, idx) => (
-                  <li key={idx}>{ep}</li>
+              </thead>
+              <tbody>
+                {characters.map((char) => (
+                  <tr key={char.id} className="hover:bg-gray-100">
+                    <td className="border p-2">{char.id}</td>
+                    <td className="border p-2">
+                      <img
+                        src={char.image}
+                        alt={char.name}
+                        className="w-12 h-12 rounded-full"
+                      />
+                    </td>
+                    <td className="border p-2">{char.name}</td>
+                    <td className="border p-2">{char.status}</td>
+                    <td className="border p-2">{char.species}</td>
+                    <td className="border p-2">{char.type || "—"}</td>
+                    <td className="border p-2">{char.gender}</td>
+                    <td className="border p-2">{char.origin.name}</td>
+                    <td className="border p-2">{char.location.name}</td>
+                  </tr>
                 ))}
-              </ul>
-            </div>
+              </tbody>
+            </table>
           </div>
-        </div>
+
+          {/* ⬅️➡️ Pagination */}
+          <div className="flex flex-wrap justify-center gap-2 mt-6">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border rounded bg-gray-200 disabled:opacity-50"
+            >
+              ←
+            </button>
+
+            {renderPagination()}
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 border rounded bg-gray-200 disabled:opacity-50"
+            >
+              →
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
